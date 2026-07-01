@@ -44,6 +44,12 @@ Request Parameters: None.
 Endpoint: POST /clear_reference_audio_cache
 Function: Clear the loaded reference audio cache on the server.
 Request Parameters: None.
+
+7. Setup TTS From Settings
+Endpoint: Post /setup_tts
+Function: Load character from the settings json by name
+Request Parameters (JSON): 
+    - character_name (string): Character name to set up.
 """
 
 import time

@@ -14,6 +14,8 @@ from .ModelManager import model_manager
 from .Utils.Shared import context
 from .Utils.Language import normalize_language
 
+import json
+
 logger = logging.getLogger(__name__)
 
 _reference_audios: Dict[str, dict] = {}
@@ -39,6 +41,10 @@ class ReferenceAudioPayload(BaseModel):
     language: str
 
 
+class SetupTTSPayload(BaseModel):
+    character_name: str
+
+
 class TTSPayload(BaseModel):
     character_name: str
     text: str
@@ -54,6 +60,26 @@ def load_character_endpoint(payload: CharacterPayload):
             model_dir=payload.onnx_model_dir,
             language=normalize_language(payload.language),
         )
+        
+        settings = {}
+        if os.path.isfile("settings.json"):
+            with open("settings.json", "r") as read_content:
+                try:
+                    settings = json.load(read_content)
+                except json.decoder.JSONDecodeError:
+                    pass
+                
+        if payload.character_name not in settings:
+            settings[payload.character_name] = {}
+                
+        settings[payload.character_name].update({
+            "model_dir": payload.onnx_model_dir, 
+            "language": payload.language
+        })
+            
+        with open("settings.json", "w") as write_content:
+            json.dump(settings, write_content, indent=4)
+                
         return {"status": "success", "message": f"Character '{payload.character_name}' loaded."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -81,7 +107,57 @@ def set_reference_audio_endpoint(payload: ReferenceAudioPayload):
         'audio_text': payload.audio_text,
         'language': normalize_language(payload.language),
     }
+
+    settings = {}
+    if os.path.isfile("settings.json"):
+        with open("settings.json", "r") as read_content:
+            try:
+                settings = json.load(read_content)
+            except json.decoder.JSONDecodeError:
+                pass
+
+    if payload.character_name not in settings:
+        settings[payload.character_name] = {}
+
+    settings[payload.character_name].update({
+        "audio_path": payload.audio_path,
+        "audio_text": payload.audio_text,
+        "audio_language": payload.language,
+    })
+
+    with open("settings.json", "w") as write_content:
+        json.dump(settings, write_content, indent=4)
+    
     return {"status": "success", "message": f"Reference audio for '{payload.character_name}' set."}
+
+@app.post("/setup_tts")
+def setup_tts_endpoint(payload: SetupTTSPayload):
+    try:
+        if not os.path.isfile("settings.json"):
+            raise HTTPException(
+                status_code=404,
+                detail="settings.json file not found.",
+            )
+        
+        with open("settings.json", "r") as read_content:
+            settings = json.load(read_content)
+            
+        model_manager.load_character(
+            character_name=payload.character_name,
+            model_dir=settings[payload.character_name]["model_dir"],
+            language=normalize_language(settings[payload.character_name]["language"]),
+        )
+        
+        _reference_audios[payload.character_name] = {
+            'audio_path': settings[payload.character_name]["audio_path"],
+            'audio_text': settings[payload.character_name]["audio_text"],
+            'language': normalize_language(settings[payload.character_name]["audio_language"]),
+        }
+        
+        return {"status": "success", "message": f"Character '{payload.character_name}' TTS configured."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
 
 
 def run_tts_in_background(
